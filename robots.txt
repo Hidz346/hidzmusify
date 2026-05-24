@@ -1,0 +1,11 @@
+# robots.txt for HidzMusify
+
+User-agent: *
+Allow: /
+
+# Avoid indexing internal endpoints and auth flows.
+Disallow: /functions/
+Disallow: /api/
+Disallow: /auth/
+
+Sitemap: ./sitemap.xml
