@@ -1,0 +1,15 @@
+{
+  "appId": "id.my.hidzproject.hidzmusify",
+  "appName": "HidzMusify",
+  "webDir": "../HidzMusify",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#000000"
+  },
+  "ios": {
+    "backgroundColor": "#000000",
+    "contentInset": "automatic"
+  }
+}
