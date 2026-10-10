@@ -1,0 +1,18 @@
+name: Search fallback tests
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master, fix/search-streaming-fallback]
+
+jobs:
+  tracks-fallback:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test search and stream normalization
+        run: node --test tests/tracks-fallback.test.mjs
