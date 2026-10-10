@@ -39,6 +39,9 @@ test('searchTracks normalizes search results to the player schema', async () => 
         assert.equal(result.tracks.items[0].duration, 213);
         assert.equal(result.tracks.items[0].artist.name, 'Example Artist');
         assert.equal(result.tracks.items[0].album.title, 'Example Album');
+        assert.equal(result.tracks.items[0].tracksTrackId, '12345');
+        assert.equal(result.tracks.items[0].artist.tracksArtistId, '77');
+        assert.equal(result.tracks.items[0].album.tracksReleaseId, '');
         assert.equal(result.tracks.items[0].isUnavailable, false);
     } finally {
         globalThis.fetch = originalFetch;
