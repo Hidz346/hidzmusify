@@ -83,8 +83,6 @@ function normalizeTrack(item) {
         audioModes: ['LOSSLESS', 'STEREO'],
         audioQuality: 'LOSSLESS',
         isUnavailable: item.playable === false,
-        allowStreaming: item.playable !== false,
-        streamReady: item.playable !== false,
         url: `${TRACKS_API_BASE_URL}/track/${encodeURIComponent(trackId)}`,
         _href: `/track/${encodeURIComponent(trackId)}`,
     };
