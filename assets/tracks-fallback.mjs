@@ -7,17 +7,19 @@ function asArray(value) {
 
 function normalizeArtist(value, fallbackName = 'Unknown Artist') {
     if (typeof value === 'string') {
-        return { id: '', artistId: '', name: value || fallbackName, provider: 'tracks' };
+        return { id: '', artistId: '', tracksArtistId: '', name: value || fallbackName, provider: 'tracks', _href: '' };
     }
 
     const artistId = String(value?.artistId || value?.id || '');
     return {
         id: artistId,
         artistId,
+        tracksArtistId: artistId,
         name: value?.name || value?.displayName || fallbackName,
         avatar: value?.avatar || value?.picture || null,
         picture: value?.picture || value?.avatar || null,
         provider: 'tracks',
+        _href: artistId ? `/artist/${encodeURIComponent(artistId)}` : '',
     };
 }
 
@@ -36,8 +38,10 @@ function normalizeTrack(item) {
         artists = artistNames.map((name, index) => ({
             id: String(artistIds[index] || ''),
             artistId: String(artistIds[index] || ''),
+            tracksArtistId: String(artistIds[index] || ''),
             name: typeof name === 'string' && name.trim() ? name : 'Unknown Artist',
             provider: 'tracks',
+            _href: artistIds[index] ? `/artist/${encodeURIComponent(String(artistIds[index]))}` : '',
         }));
     }
 
@@ -63,9 +67,11 @@ function normalizeTrack(item) {
         album: {
             id: albumId,
             releaseId: albumId,
+            tracksReleaseId: albumId,
             title: albumTitle,
             cover: artwork,
             releaseDate: item.releaseDate || item.album?.releaseDate || '',
+            _href: albumId ? `/album/${encodeURIComponent(albumId)}` : '',
         },
         cover: artwork,
         image: artwork,
@@ -80,6 +86,7 @@ function normalizeTrack(item) {
         allowStreaming: item.playable !== false,
         streamReady: item.playable !== false,
         url: `${TRACKS_API_BASE_URL}/track/${encodeURIComponent(trackId)}`,
+        _href: `/track/${encodeURIComponent(trackId)}`,
     };
 }
 
