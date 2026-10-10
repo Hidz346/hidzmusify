@@ -33,7 +33,7 @@ test('searchTracks normalizes search results to the player schema', async () => 
 
     try {
         const result = await searchTracks('  Example Song  ');
-        assert.equal(requestedUrl, 'https://tracks.monochrome.st/search?q=Example%20Song');
+        assert.equal(requestedUrl, 'https://tracks.monochrome.st/search/tracks?q=Example%20Song&limit=20');
         assert.equal(result.tracks.items.length, 1);
         assert.equal(result.tracks.items[0].id, 'm:12345');
         assert.equal(result.tracks.items[0].duration, 213);

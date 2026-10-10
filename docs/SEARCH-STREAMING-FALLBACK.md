@@ -4,7 +4,7 @@ HidzMusify currently serves a static built bundle rather than its original appli
 
 ## Behavior
 
-- Search first calls the public Tracks API at `https://tracks.monochrome.st/search?q=...`.
+- Search first calls the track-specific endpoint `https://tracks.monochrome.st/search/tracks?q=...&limit=...`, matching the API client in `monochrome.zip`.
 - A successful response is normalized to the track result shape consumed by the current HidzMusify UI. Track IDs are marked internally with the `m:` prefix so the playback adapter can route those tracks to the Tracks API streamer.
 - Tracks API requests have an 8-second timeout. If the request fails or returns no matching tracks, the existing provider path remains as a fallback.
 - The legacy combined-search and track-search paths now have a 15-second upper bound for the UI response instead of waiting indefinitely.
