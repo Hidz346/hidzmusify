@@ -127,7 +127,7 @@ export async function searchTracks(query, options = {}) {
 
     try {
         const response = await fetch(
-            `${TRACKS_API_BASE_URL}/search?q=${encodeURIComponent(cleanQuery)}`,
+            `${TRACKS_API_BASE_URL}/search/tracks?q=${encodeURIComponent(cleanQuery)}&limit=${Math.max(1, Math.min(50, Math.floor(Number(options?.limit) || 20)))}`,
             {
                 method: 'GET',
                 headers: { Accept: 'application/json' },
