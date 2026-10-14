@@ -704,3 +704,194 @@
   wAdd.call(window,"message",function(e){if(e.data&&e.data.type==="HIDZ_FORCE_PLAY"){window.__hidzManualPause=false;activePlay=true;forceKeepPlaying();}},false);
 })();
 
+/* === HIDZ V14: NATIVE BACKGROUND STREAM & STATIC CONTEXTUAL BACK === */
+(function(){
+  if(window.__HIDZ_V14__)return; window.__HIDZ_V14__=true;
+
+  // 1. Hapus semua tombol fixed/melayang versi lama agar tidak pernah muncul di Home atau ikut bergeser saat scroll
+  var removeFloatingBtns=function(){
+    ["hidz-back-v10","hidz-back-v9","hidz-back-v8","hidz-back-v7","hidz-native-back-btn","hidz-back-pill","hidz-back-btn-v8"].forEach(function(id){
+      var el=document.getElementById(id); if(el)el.remove();
+    });
+  };
+  removeFloatingBtns();
+
+  // 2. Native Background Audio Stream Takeover (Mengatasi YouTube Embed yang berhenti saat keluar browser)
+  var userPaused=false, wantPlaying=false, lastUserClick=0, lastStreamKey="";
+  var currentTrack={title:"HidzMusify",artist:"HidzMusify"};
+
+  try{
+    Object.defineProperty(Document.prototype,"hidden",{get:function(){return false;},configurable:true});
+    Object.defineProperty(Document.prototype,"webkitHidden",{get:function(){return false;},configurable:true});
+    Object.defineProperty(Document.prototype,"visibilityState",{get:function(){return"visible";},configurable:true});
+  }catch(_){}
+
+  var blk={visibilitychange:1,webkitvisibilitychange:1,pagehide:1,freeze:1,blur:1};
+  var dAdd=Document.prototype.addEventListener, wAdd=Window.prototype.addEventListener;
+  Document.prototype.addEventListener=function(t,f,o){if(blk[String(t).toLowerCase()])return;return dAdd.call(this,t,f,o);};
+  Window.prototype.addEventListener=function(t,f,o){if(blk[String(t).toLowerCase()])return;return wAdd.call(this,t,f,o);};
+
+  var oPlay=HTMLMediaElement.prototype.play, oPause=HTMLMediaElement.prototype.pause;
+
+  wAdd.call(window,"pointerdown",function(e){
+    var b=e.target&&e.target.closest?e.target.closest("button,[role=\"button\"]"):null;
+    if(!b)return;
+    if(b.closest(".player-bar,footer,[class*=\"player\"]")){
+      lastUserClick=Date.now();
+    }
+  },true);
+
+  HTMLMediaElement.prototype.play=function(){
+    if(this.id!=="hidz-ka-v13"&&this.id!=="hidz-silent-ka"){
+      wantPlaying=true; userPaused=false;
+      updateMediaSession("playing");
+    }
+    return oPlay.apply(this,arguments);
+  };
+
+  HTMLMediaElement.prototype.pause=function(){
+    if(this.id==="hidz-ka-v13"||this.id==="hidz-silent-ka")return;
+    var byUser=(Date.now()-lastUserClick)<1000;
+    if(!byUser&&!userPaused&&wantPlaying&&!this.ended&&this.currentTime>0){
+      var s=this;
+      setTimeout(function(){if(!userPaused&&wantPlaying)try{oPlay.call(s).catch(function(){});}catch(_){}},30);
+      return;
+    }
+    userPaused=true; wantPlaying=false;
+    updateMediaSession("paused");
+    return oPause.apply(this,arguments);
+  };
+
+  // Resolusi stream <audio> native otomatis agar audio jalan di background (luar browser / layar mati)
+  var attachNativeStream=async function(title,artist){
+    var cleanT=String(title||"").split(/[\/|]/)[0].replace(/\s*[\(\[\{][^)\]\}]*[\)\]\}]/g,"").trim();
+    var cleanA=String(artist||"").replace(/\s*-\s*Topic$/i,"").trim();
+    var key=(cleanT+"|"+cleanA).toLowerCase();
+    if(!cleanT||key===lastStreamKey)return;
+
+    var mainAudio=document.querySelector("audio:not(#hidz-ka-v13):not(#hidz-silent-ka)");
+    if(!mainAudio)return;
+    // Jika <audio> sudah punya stream aktif yang berjalan, tidak perlu diganti
+    if(mainAudio.src&&!mainAudio.paused&&mainAudio.currentTime>0&&!mainAudio.error)return;
+
+    lastStreamKey=key;
+    try{
+      var q=encodeURIComponent((cleanT+" "+cleanA).trim());
+      var r=await fetch("https://saavn.dev/api/search/songs?query="+q+"&limit=2");
+      if(r.ok){
+        var j=await r.json();
+        var item=j&&j.data&&Array.isArray(j.data.results)?j.data.results[0]:null;
+        var dl=item&&Array.isArray(item.downloadUrl)?(item.downloadUrl[item.downloadUrl.length-1]?.url||item.downloadUrl[0]?.url):null;
+        if(dl&&(!mainAudio.src||mainAudio.paused||mainAudio.error)){
+          var curSec=window.__hidzYtBridge&&window.__hidzYtBridge.getCurrentTime?window.__hidzYtBridge.getCurrentTime():0;
+          mainAudio.src=dl;
+          if(curSec>1)try{mainAudio.currentTime=curSec;}catch(_){}
+          if(wantPlaying&&!userPaused){
+            if(window.__hidzYtBridge&&window.__hidzYtBridge.pause){
+              window.__hidzManualPause=true;
+              try{window.__hidzYtBridge.pause();}catch(_){}
+              window.__hidzManualPause=false;
+            }
+            oPlay.call(mainAudio).catch(function(){});
+          }
+        }
+      }
+    }catch(_){}
+  };
+
+  var updateMediaSession=function(state){
+    if(!("mediaSession" in navigator))return;
+    try{
+      var img=document.querySelector(".player-bar img,footer img,img[src*=\"ytimg\"]");
+      var art=(img&&img.src)?img.src:(window.location.origin+"/favicon.ico");
+      navigator.mediaSession.metadata=new MediaMetadata({
+        title:currentTrack.title||"HidzMusify",
+        artist:currentTrack.artist||"HidzMusify",
+        album:"HidzMusify",
+        artwork:[{src:art,sizes:"512x512",type:"image/jpeg"}]
+      });
+      navigator.mediaSession.playbackState=state;
+      navigator.mediaSession.setActionHandler("play",function(){
+        userPaused=false; wantPlaying=true;
+        var a=document.querySelector("audio:not(#hidz-ka-v13):not(#hidz-silent-ka)");
+        if(a&&a.src)try{oPlay.call(a);}catch(_){}
+        else if(window.__hidzYtBridge&&window.__hidzYtBridge.resume)window.__hidzYtBridge.resume();
+        updateMediaSession("playing");
+      });
+      navigator.mediaSession.setActionHandler("pause",function(){
+        userPaused=true; wantPlaying=false; lastUserClick=Date.now(); window.__hidzManualPause=true;
+        var a=document.querySelector("audio:not(#hidz-ka-v13):not(#hidz-silent-ka)");
+        if(a&&!a.paused)try{oPause.call(a);}catch(_){}
+        if(window.__hidzYtBridge&&window.__hidzYtBridge.pause)window.__hidzYtBridge.pause();
+        updateMediaSession("paused");
+      });
+    }catch(_){}
+  };
+
+  // 3. Tombol Kembali Kontekstual & Statis (Hanya di Sub-Halaman, TIDAK di Home, TIDAK ikut scroll)
+  var triggerContextualBack=function(){
+    var inp=document.querySelector("input[type=\"search\"],input");
+    if(inp&&inp.value&&inp.value.trim()){
+      var bodyTxt=document.body?document.body.innerText||"":"";
+      // Jika sedang di halaman profil Artis, kembali ke daftar hasil pencarian
+      if(/Popular Tracks|Artist Profile|Verified/i.test(bodyTxt)){
+        inp.focus();
+        inp.dispatchEvent(new Event("input",{bubbles:true}));
+        inp.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",code:"Enter",keyCode:13,which:13,bubbles:true}));
+        var f=inp.closest("form");
+        if(f)f.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}));
+        return;
+      }
+      // Jika sedang di hasil pencarian, bersihkan input dan kembali ke Home
+      var clearBtn=inp.parentElement?inp.parentElement.querySelector("button"):null;
+      if(clearBtn)try{clearBtn.click();}catch(_){}
+      inp.value="";
+      inp.dispatchEvent(new Event("input",{bubbles:true}));
+    }
+    var homeEl=Array.from(document.querySelectorAll("button,a,span")).find(function(el){
+      return el.textContent&&el.textContent.trim()==="Home";
+    });
+    if(homeEl){homeEl.click();return;}
+    if(window.history.length>1)window.history.back();
+  };
+
+  setInterval(function(){
+    removeFloatingBtns();
+    var am=document.querySelector("am-lyrics");
+    if(am){
+      var rt=am.getAttribute("song-title")||am.songTitle||"";
+      var ra=(am.getAttribute("song-artist")||am.songArtist||"").replace(/\s*-\s*Topic$/i,"").trim();
+      if(rt){
+        currentTrack.title=rt;
+        if(ra)currentTrack.artist=ra;
+        var ytPlay=window.__hidzYtBridge&&window.__hidzYtBridge.isPlaying&&window.__hidzYtBridge.isPlaying();
+        if(ytPlay&&!userPaused){wantPlaying=true;}
+        attachNativeStream(rt,ra);
+      }
+    }
+
+    // Pasang tombol kembali statis HANYA jika sedang di halaman Artis atau Hasil Pencarian (bukan Home)
+    var bodyTxt=document.body?document.body.innerText||"":"";
+    var isHome=/Recommended Songs|Hot\s*&\s*New/i.test(bodyTxt)&&!/Search Results for|Popular Tracks/i.test(bodyTxt);
+    var isSubPage=!isHome&&(/Search Results for|Popular Tracks|Artist Profile|Unknown Artist/i.test(bodyTxt));
+
+    var backBar=document.getElementById("hidz-static-back-v14");
+    if(!isSubPage){
+      if(backBar)backBar.remove();
+    }else{
+      var targetHeading=Array.from(document.querySelectorAll("h1,h2,h3")).find(function(h){
+        return h.offsetParent!==null&&/Search Results for|Unknown Artist|Popular Tracks/i.test(h.textContent||"");
+      })||document.querySelector("main h1, main h2");
+      var hostContainer=targetHeading?targetHeading.parentElement:null;
+      if(hostContainer&&!backBar){
+        backBar=document.createElement("div");
+        backBar.id="hidz-static-back-v14";
+        backBar.style.cssText="position:static;width:100%;margin:4px 0 12px 0;padding:0;display:flex;align-items:center;";
+        backBar.innerHTML='<button type="button" style="display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px 0 10px;border-radius:8px;background:rgba(255,255,255,0.08);color:#f5f5f7;border:1px solid rgba(255,255,255,0.12);font:500 13px/1 system-ui,-apple-system,sans-serif;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg><span>Kembali</span></button>';
+        backBar.firstChild.onclick=function(e){e.preventDefault();e.stopPropagation();triggerContextualBack();};
+        hostContainer.insertBefore(backBar,hostContainer.firstChild);
+      }
+    }
+  },200);
+})();
+
