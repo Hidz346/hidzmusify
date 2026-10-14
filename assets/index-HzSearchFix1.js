@@ -1,4 +1,114 @@
 
+/* === HIDZ V13: UNSTOPPABLE BACKGROUND PLAYBACK === */
+(function(){
+  if(window.__HIDZ_V13__)return; window.__HIDZ_V13__=true;
+  window.__hidzManualPause=false;
+  var activePlay=false, lastPauseTap=0, keepAudio=null, audioCtx=null;
+
+  // 1. Kunci Visibility & Fokus Halaman
+  try{
+    Object.defineProperty(Document.prototype,"hidden",{get:function(){return false;},configurable:true});
+    Object.defineProperty(Document.prototype,"webkitHidden",{get:function(){return false;},configurable:true});
+    Object.defineProperty(Document.prototype,"visibilityState",{get:function(){return"visible";},configurable:true});
+    Object.defineProperty(Document.prototype,"hasFocus",{value:function(){return true;},configurable:true});
+  }catch(_){}
+
+  var blk={visibilitychange:1,webkitvisibilitychange:1,pagehide:1,freeze:1,blur:1};
+  var dAdd=Document.prototype.addEventListener, wAdd=Window.prototype.addEventListener;
+  Document.prototype.addEventListener=function(t,f,o){if(blk[String(t).toLowerCase()])return;return dAdd.call(this,t,f,o);};
+  Window.prototype.addEventListener=function(t,f,o){if(blk[String(t).toLowerCase()])return;return wAdd.call(this,t,f,o);};
+
+  // Deteksi apakah user benar-benar menekan tombol Pause di player
+  wAdd.call(window,"pointerdown",function(e){
+    var b=e.target&&e.target.closest?e.target.closest("button,[role=\"button\"]"):null;
+    if(!b)return;
+    var inPlayer=b.closest(".player-bar,footer,[class*=\"player\"]");
+    if(inPlayer){
+      lastPauseTap=Date.now();
+      window.__hidzManualPause=true;
+      setTimeout(function(){if(activePlay)window.__hidzManualPause=false;},1200);
+    }
+  },true);
+
+  var startKeepAlive=function(){
+    try{
+      var AC=window.AudioContext||window.webkitAudioContext;
+      if(AC&&!audioCtx){
+        audioCtx=new AC();
+        var osc=audioCtx.createOscillator(),g=audioCtx.createGain();
+        g.gain.value=0.0001;osc.connect(g);g.connect(audioCtx.destination);osc.start(0);
+      }
+      if(audioCtx&&audioCtx.state==="suspended")audioCtx.resume().catch(function(){});
+    }catch(_){}
+    try{
+      if(!keepAudio&&document.body){
+        var sr=8000,buf=new ArrayBuffer(44+sr),v=new DataView(buf);
+        var w=function(o,s){for(var i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+        w(0,"RIFF");v.setUint32(4,36+sr,true);w(8,"WAVEfmt ");v.setUint32(16,16,true);
+        v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,sr,true);v.setUint32(28,sr,true);
+        v.setUint16(32,1,true);v.setUint16(34,8,true);w(36,"data");v.setUint32(40,sr,true);
+        for(var i=0;i<sr;i++)v.setUint8(44+i,128+(i%2));
+        var b=new Uint8Array(buf),s="";for(var j=0;j<b.length;j++)s+=String.fromCharCode(b[j]);
+        keepAudio=document.createElement("audio");keepAudio.id="hidz-ka-v13";
+        keepAudio.src="data:audio/wav;base64,"+btoa(s);keepAudio.loop=true;keepAudio.volume=0.01;
+        keepAudio.setAttribute("playsinline","true");keepAudio.style.display="none";
+        document.body.appendChild(keepAudio);
+      }
+      if(keepAudio&&keepAudio.paused&&activePlay)oPlay.call(keepAudio).catch(function(){});
+    }catch(_){}
+  };
+
+  var oPlay=HTMLMediaElement.prototype.play, oPause=HTMLMediaElement.prototype.pause;
+  HTMLMediaElement.prototype.play=function(){
+    if(this.id!=="hidz-ka-v13"){activePlay=true;window.__hidzManualPause=false;startKeepAlive();}
+    return oPlay.apply(this,arguments);
+  };
+  HTMLMediaElement.prototype.pause=function(){
+    if(this.id==="hidz-ka-v13"&&activePlay)return;
+    var byUser=(Date.now()-lastPauseTap)<1200;
+    if(!byUser&&activePlay&&!this.ended&&this.currentTime>0){
+      var self=this;
+      setTimeout(function(){if(activePlay)try{oPlay.call(self).catch(function(){});}catch(_){}},30);
+      return;
+    }
+    activePlay=false;
+    if(keepAudio&&!keepAudio.paused)try{oPause.call(keepAudio);}catch(_){}
+    return oPause.apply(this,arguments);
+  };
+
+  // Paksa resume jika YouTube IFrame atau <audio> mencoba berhenti saat keluar halaman
+  var forceKeepPlaying=function(){
+    if(!activePlay||window.__hidzManualPause)return;
+    startKeepAlive();
+    document.querySelectorAll("audio:not(#hidz-ka-v13)").forEach(function(a){
+      if(a.src&&a.paused&&!a.ended)try{oPlay.call(a).catch(function(){});}catch(_){}
+    });
+    if(window.__hidzYtBridge&&window.__hidzYtBridge.resume)try{window.__hidzYtBridge.resume();}catch(_){}
+    document.querySelectorAll("iframe").forEach(function(f){
+      if(f.src&&f.src.indexOf("youtube.com/embed")!==-1&&f.contentWindow){
+        try{f.contentWindow.postMessage(JSON.stringify({event:"command",func:"playVideo",args:[]}),"*");}catch(_){}
+      }
+    });
+  };
+
+  setInterval(function(){
+    var ytPlaying=window.__hidzYtBridge&&window.__hidzYtBridge.isPlaying&&window.__hidzYtBridge.isPlaying();
+    var a=document.querySelector("audio:not(#hidz-ka-v13)");
+    if((a&&!a.paused&&a.currentTime>0)||ytPlaying){
+      if(!window.__hidzManualPause){activePlay=true;startKeepAlive();}
+    }else if(activePlay&&!window.__hidzManualPause){
+      forceKeepPlaying();
+    }
+  },180);
+
+  dAdd.call(document,"visibilitychange",function(e){e.stopImmediatePropagation();forceKeepPlaying();setTimeout(forceKeepPlaying,100);setTimeout(forceKeepPlaying,400);},true);
+  wAdd.call(window,"pagehide",forceKeepPlaying,true);
+  wAdd.call(window,"blur",forceKeepPlaying,true);
+  wAdd.call(window,"message",function(e){if(e.data&&e.data.type==="HIDZ_FORCE_PLAY"){window.__hidzManualPause=false;activePlay=true;forceKeepPlaying();}},false);
+})();
+
+;
+
 /* === HIDZMUSIFY CLEAN PATCH v12 === */
 (function(){
   if(window.__HIDZ_V12__)return; window.__HIDZ_V12__=true;
