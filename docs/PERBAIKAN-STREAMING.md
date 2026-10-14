@@ -1,5 +1,106 @@
 # HidzMusify — Laporan Perbaikan Search & Streaming
 
+**Revisi 2 — 14 Oktober 2026** (di atas Revisi 1 yang ada di bagian "Revisi 1" lebih bawah)
+
+## Revisi 2: search & putar lewat YouTube
+
+### Kenapa Revisi 1 saja tidak cukup
+
+Revisi 1 memperbaiki kode (boot, timeout, validator, error yang jujur) dan itu tetap berlaku. Tetapi saat dicek langsung ke backend-nya,
+**layanan musik yang dipakai Monochrome/HidzMusify (TIDAL lewat instance hifi-API) sudah tidak bisa dipakai** — ini bukan bug kode:
+
+| Host                        | Hasil pemeriksaan                                                                                                                  |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `api.monochrome.tf`         | Tidak ada record DNS (`NXDOMAIN`; dicek di HP kamu dan lewat `dns.google` → `Status 3`)                                            |
+| `hifi.geeked.wtf`           | Tidak ada record DNS (`NXDOMAIN`)                                                                                                  |
+| `monochrome-api.samidy.com` | Hidup, tapi balasannya: refresh token TIDAL milik servernya ditolak (HTTP 403 dari `auth.tidal.com`) → tidak bisa mengambil stream |
+| daftar uptime               | Kosong: 0 host unik yang sehat (diagnostik di konsol HP kamu); satu host lain terblokir CORS, satu tidak terjangkau                |
+
+Memperbaikinya dari sisi kode hanya mungkin dengan melewati pembatasan akses milik pihak lain (proxy/penyamaran origin/token yang bukan milikmu).
+PRD melarang itu, jadi **tidak dicoba**. (Ada laporan komunitas bahwa Monochrome menghentikan layanannya; itu tidak saya verifikasi dari sumber resmi.)
+
+### Apa yang diganti — hanya yang rusak
+
+Sesuai permintaanmu ("yang diganti yang error saja"), nama, logo, tema, layout, library, playlist, antrean, pengaturan, PWA, `desktop/` dan `mobile/` **tidak berubah**.
+Yang diganti hanya dua hal yang memang mati, dengan pendekatan dari source MUSIK yang kamu kirim (YouTube Music lewat fungsi server + YouTube IFrame Player):
+
+| Bagian          | Sebelum                               | Sesudah                                                                                                                                                                                                                                                                            |
+| --------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Search          | hifi-API TIDAL (mati) → spinner/error | `GET /api/search?q=` (fungsi Vercel, `ytmusic-api`) → daftar lagu; batas waktu 8 dtk di server, 15 dtk di browser; gagal = pesan error yang jelas, **tidak pernah** "hasil kosong" palsu                                                                                           |
+| Putar           | stream manifest TIDAL (mati)          | YouTube IFrame Player resmi; elemen `<audio>` aplikasi tetap menjadi "pengendali" UI sehingga progress bar, ikon play/pause, antrean, Next/Prev, lanjut-otomatis, Media Session tetap bekerja tanpa menulis ulang Player                                                           |
+| Lagu di library | id TIDAL → tidak bisa diputar         | Saat diputar, dicari padanannya di YouTube lewat `GET /api/resolve` (judul + artis + durasi, hasil di-ranking; versi live/cover/lagu lain ditolak), lalu diingat di `localStorage["hz-yt-map-v1"]`                                                                                 |
+| Video gagal     | diam                                  | Video diblokir/dihapus → otomatis coba versi lain (maks 3 kali) + pemberitahuan; tidak mulai dalam 10 dtk → 1 alternatif lalu error (tunggu maksimal ~20 dtk, tidak "loading terus"); autoplay diblokir browser → pesan dalam beberapa detik, tombol Play lalu benar-benar memutar |
+
+Jalur TIDAL lama **tidak dihapus**: `localStorage.setItem("hz-source","tidal")` mengembalikannya (berguna kalau suatu hari ada instance yang hidup lagi).
+
+### File
+
+Di-deploy (ke root repo):
+
+| File                                             | Keterangan                                                                                                                                                              |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api/_lib.js`, `api/search.js`, `api/resolve.js` | **Baru.** Fungsi Vercel (Node, CommonJS). Tanpa rahasia/cookie/data pengguna; hanya GET; input divalidasi.                                                              |
+| `package.json`                                   | **Baru, runtime saja:** satu dependency `ytmusic-api` (`^5.3.1`, versi yang sama dengan yang dipakai MUSIK) + `engines.node = 22.x`. Tanpa devDependencies/skrip build. |
+| `assets/index-Dg7h0oU_.js`                       | 33 patch (23 lama + 10 baru). SHA-256 `f602060f…83fbb2`. Nama file tetap.                                                                                               |
+| `sw.js`                                          | Satu baris tambahan: `/api/*` tidak pernah dilayani dari cache service worker (jangan sajikan hasil cari basi).                                                         |
+
+Bukan bagian situs: `patches/` (patcher + `prelude-youtube.js`), `tests/` (unit + e2e), `docs/`.
+
+### Validasi (dijalankan di sini; semua jaringan di-mock)
+
+| Perintah                                                                         | Hasil                                                                                                          |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `node --test tests/unit/*.test.mjs`                                              | **15/15** (handler `/api` asli di atas katalog `ytmusic-api` palsu)                                            |
+| `node --test --test-force-exit tests/e2e/*.test.mjs`                             | **63/63**: 44 tes Revisi 1 (jalur TIDAL, `hz-source=tidal`) + 19 tes YouTube (UI nyata, pemutar YouTube palsu) |
+| Uji mutasi: patch `P12c` dilepas                                                 | Tes "Pause melanjutkan video yang sama" **gagal** → tes memang menjaga bug itu                                 |
+| `eslint .`, `prettier --check`, `node --check` (semua chunk + `sw.js` + `api/*`) | Bersih                                                                                                         |
+| Patcher dijalankan ulang dari bundel asli                                        | 33/33 patch cocok, `node --check` lolos, hasil byte-identik (SHA sama)                                         |
+
+### Yang BELUM terbukti (harus kamu cek setelah deploy)
+
+Tes membuktikan **logika aplikasi**. Dari lingkungan ini saya tidak bisa menjangkau YouTube, npm, maupun Vercel kamu, jadi **belum terbukti**:
+
+1. `ytmusic-api` benar-benar mengembalikan hasil dari server Vercel-mu (ia scraper tidak resmi; bisa diblokir/berubah kapan saja).
+2. Pemutar YouTube benar-benar mau memutar video di domainmu (lihat "Risiko" di bawah).
+3. Build Vercel meng-install `ytmusic-api` dan fungsi `/api/*` terdeploy.
+
+Cek tercepat setelah deploy: buka `https://hidzmusify-com.vercel.app/api/search?q=daft%20punk` — harus keluar JSON berisi `items`.
+Kalau keluar `502`/`504`: lihat Vercel → Logs (`[hidzmusify-api] ...`); itu berarti masalahnya di sisi `ytmusic-api`/YouTube, bukan di UI.
+Kalau lagu tidak berbunyi: jalankan `localStorage.setItem("hz-yt-visible","1")` lalu reload — pemutar YouTube tampil di kanan bawah dan menunjukkan alasan yang diberikan YouTube.
+
+### Batasan fitur (jujur)
+
+- **Hanya tab Tracks** yang berfungsi. Artists/Albums/Playlists menampilkan "Only tracks are available in this version."; halaman artis/album bawaan masih butuh API TIDAL yang mati.
+- Lencana kualitas ("Lossless") pada lagu library mencerminkan metadata TIDAL lama; yang diputar sebenarnya audio YouTube, **bukan lossless**.
+- Lirik, rekomendasi/radio/autoplay-mix masih memanggil endpoint TIDAL yang mati; gagal di latar belakang tanpa menghentikan pemutaran.
+- Pemutaran tab latar di HP bergantung pada browser; iframe YouTube yang disembunyikan kadang dihentikan OS (aplikasi mencoba melanjutkan otomatis kecuali kamu menekan Pause).
+- Refresh pada deep link (mis. `/search/xxx`) di Vercel memberi 404 karena `_redirects` hanya dikenali Netlify/EdgeOne; ini sudah ada sebelum perbaikan dan **tidak diubah** (butuh `vercel.json` rewrites — keputusan konfigurasi deploy ada padamu).
+
+### Risiko & hal yang perlu keputusanmu
+
+- **Syarat layanan YouTube.** Pemutar disembunyikan (1×1 piksel di luar layar), sama seperti MUSIK. Sepengetahuan saya, kebijakan YouTube API Services mensyaratkan pemutar embed berukuran minimal 200×200 dan terlihat, serta melarang memisahkan audio dari video, dan `ytmusic-api` adalah scraper tidak resmi. Untuk pemakaian pribadi/uji ini lazim, tetapi untuk produk publik berisiko dihentikan. Sakelar `hz-yt-visible=1` menampilkan pemutar.
+- **Lisensi MUSIK.** Zip MUSIK tidak menyertakan berkas LICENSE. Saya menulis kode baru sendiri (tidak menyalin file); yang diambil hanya pendekatannya (`ytmusic-api` + IFrame API). Pastikan kamu berhak memakai/mengadaptasi MUSIK.
+- Tidak ada rahasia/token/API key baru di frontend maupun repo. Tidak ada proxy, bypass, atau penyamaran origin.
+
+### Deploy (Termux)
+
+```sh
+cd ~/hidzmusify && git pull            # pastikan repo terbaru
+unzip -o ~/storage/downloads/hidzmusify-fix-pack.zip -d ~/
+sh ~/hidzmusify-fix-pack/apply-fix.sh ~/hidzmusify
+git add -A && git commit -m "Search & playback via YouTube Music (api/) + YouTube IFrame player"
+git push origin master                 # Vercel otomatis build & deploy
+```
+
+Di Vercel: Framework Preset "Other", tanpa Build Command, Root Directory = root repo. Setelah deploy: hard refresh (atau hapus data situs sekali) karena nama bundel tidak berubah.
+
+---
+
+# Revisi 1 — Search & Streaming (11 Oktober 2026)
+
+> Catatan: bagian ini adalah laporan Revisi 1 apa adanya. Jalur TIDAL yang dibahas di sini masih ada di bundel tetapi tidak lagi dipakai secara default (lihat Revisi 2).
+> Penyebutan "23 patch" dan "dua file yang di-deploy" berlaku untuk Revisi 1; Revisi 2 memakai 33 patch dan menambah `api/` + `package.json`.
+
 Tanggal: 11 Oktober 2026 · Basis: `hidzmusify.zip` (build Vite, bundel `assets/index-Dg7h0oU_.js`) · Referensi: Monochrome v2.5.1
 
 Ringkasan: halaman **mati total** karena `SyntaxError` di bundel utama; setelah itu ada lima masalah berlapis yang membuat

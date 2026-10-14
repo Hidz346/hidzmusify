@@ -15,8 +15,17 @@ oleh mock sendiri, dan mock mengikuti kontrak hifi-API yang didokumentasikan ups
 ```bash
 npm i -D playwright            # + eslint/prettier kalau mau lint
 npx playwright install chromium
-npm test                       # = node --test --test-force-exit --test-timeout=200000 tests/e2e/*.test.mjs
+npm test                       # unit + e2e (lama dan YouTube)
+npm run test:unit              # hanya tes fungsi /api (tanpa browser)
+npm run test:youtube           # hanya jalur YouTube
 ```
+
+Di repo situs (root = situs, tanpa package.json pengembangan) jalankan dari folder `tests/`:
+`cd tests && npm i && npx playwright install chromium && npm test`. `tests/package.json` sengaja ada di dalam `tests/`
+supaya Vercel (yang hanya meng-install `package.json` di root) tidak ikut meng-install Playwright.
+
+Tes lama (TIDAL) berjalan dengan `localStorage["hz-source"]="tidal"` (opsi `source: 'tidal'`, default fixture);
+tes baru memakai `source: 'youtube'`, yaitu default build yang di-deploy.
 
 Satu file saja: `npm run test:search`, `test:playback`, `test:resilience`, `test:boot`, `test:sw`.
 
@@ -28,6 +37,13 @@ Variabel lingkungan:
 | `HIDZ_CHROMIUM` | Path executable Chromium khusus (default: yang dipasang Playwright).                              |
 
 ## Isi
+
+| File                   | Yang dibuktikan                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `unit/api.test.mjs`    | Fungsi `/api/search` & `/api/resolve` (handler asli, `ytmusic-api` diganti katalog palsu): pemetaan ke bentuk track, ranking (rekaman yang sama menang; live/cover/lagu lain ditolak), validasi input, dedupe/limit, satu daftar gagal tidak menyembunyikan yang lain, outage = error 502 (bukan "kosong"), perubahan format upstream, upstream menggantung → 504 dalam batas waktu.                                                                                                                                                                                                                                                                                                                                                |
+| `e2e/youtube.test.mjs` | Alur pengguna lewat UI sungguhan dengan pemutar YouTube palsu: cari → hasil; klik → waktu maju & ikon; **Pause melanjutkan video yang sama (tidak memuat ulang)**; seek/volume; Next/Prev/lanjut-otomatis; klik cepat; video diblokir (101) → versi alternatif + pemberitahuan; tak ada versi → error jujur & tombol Play memulai ulang; autoplay diblokir → pesan cepat lalu Play benar-benar memutar; video tak mulai → batas tunggu 10 dtk (maks 2×); skrip YouTube gagal dimuat; semua mode error pencarian (502/504/404/HTML/500/menggantung) tampil jujur, bukan "No tracks found"; query baru menang atas query lambat; lagu pustaka ber-id TIDAL di-resolve sekali & diingat; `/api/` tidak pernah di-cache service worker. |
+
+### Tes Revisi 1 (jalur TIDAL, tetap dijalankan)
 
 | File                  | Yang dibuktikan                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

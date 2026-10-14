@@ -68,6 +68,7 @@ self.addEventListener('fetch', (event) => {
     const url = new URL(req.url);
     if (url.origin !== self.location.origin) return; // APIs, streams and CDN images go straight to the network
     if (url.pathname.endsWith('/sw.js')) return; // the worker script itself is always fetched fresh by the browser
+    if (url.pathname.startsWith('/api/')) return; // our search/resolve functions: never serve a stale or cached answer
     if (req.headers.has('range')) return; // partial content cannot be cached
     if (req.destination === 'audio' || req.destination === 'video') return;
     event.respondWith(networkFirst(event, req, url));

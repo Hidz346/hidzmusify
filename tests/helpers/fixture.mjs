@@ -2,6 +2,7 @@
 // (clean storage, no service worker unless asked) per test, and collected page errors.
 import { startStaticServer } from './static-server.mjs';
 import { installMocks } from './mock-network.mjs';
+import { installYouTubeMocks } from './mock-youtube.mjs';
 import { launch, siteRoot } from './browser.mjs';
 
 export async function setup() {
@@ -16,7 +17,10 @@ export async function setup() {
         },
         /**
          * @param {import('./mock-network.mjs').MockOptions} [mock]
-         * @param {{path?: string, serviceWorkers?: 'block'|'allow', viewport?: {width:number,height:number}, init?: string|Function}} [opts]
+         * @param {{path?: string, serviceWorkers?: 'block'|'allow', viewport?: {width:number,height:number}, init?: string|Function,
+         *          source?: 'tidal'|'youtube', youtube?: import('./mock-youtube.mjs').YouTubeMockOptions}} [opts]
+         *   `source` picks the playback/search backend under test: 'tidal' (default, the legacy hifi-API path, selected through
+         *   localStorage `hz-source`) or 'youtube' (the default of the shipped build; fakes from mock-youtube.mjs are installed).
          */
         async open(
             mock = {},
@@ -26,6 +30,8 @@ export async function setup() {
                 viewport = { width: 1280, height: 800 },
                 init,
                 waitBoot = true,
+                source = 'tidal',
+                youtube = {},
             } = {}
         ) {
             const context = await browser.newContext({ viewport, serviceWorkers });
@@ -36,8 +42,17 @@ export async function setup() {
             page.on('console', (m) => {
                 if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) consoleErrors.push(m.text());
             });
+            if (source === 'tidal')
+                await page.addInitScript(() => {
+                    try {
+                        localStorage.setItem('hz-source', 'tidal');
+                    } catch {
+                        /* storage blocked */
+                    }
+                });
             if (init) await page.addInitScript(init);
             const net = await installMocks(page, mock);
+            if (source === 'youtube') net.yt = await installYouTubeMocks(page, youtube);
             await page.goto(server.url + path, { waitUntil: 'domcontentloaded' });
             if (waitBoot) await bootReady(page);
             return { page, context, net, pageErrors, consoleErrors, close: () => context.close() };

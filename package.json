@@ -1,0 +1,11 @@
+{
+    "name": "hidzmusify",
+    "private": true,
+    "description": "Runtime dependencies of the HidzMusify serverless functions in api/ (search + resolve). The site itself is static.",
+    "dependencies": {
+        "ytmusic-api": "^5.3.1"
+    },
+    "engines": {
+        "node": "22.x"
+    }
+}

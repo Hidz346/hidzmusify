@@ -14,6 +14,8 @@ node patches/apply-patches.mjs <bundel-asli>/assets/index-Dg7h0oU_.js <situs>/as
 ```
 
 `prelude.js` berisi helper level-modul (`__hzSig`, `__hzNotify`, `__hzManifestOk`, ...) yang disisipkan di awal bundel.
+`prelude-youtube.js` (disisipkan tepat setelahnya) berisi sumber YouTube: pencarian lewat `/api/search`, pemutaran lewat YouTube IFrame Player,
+dan pemetaan lagu → video (lihat `PERBAIKAN.md`, Revisi 2).
 Semua pesan UI untuk user ada di satu tempat (`__hzMsg`), dalam bahasa Inggris agar sama dengan UI aplikasi.
 
 Nama file bundel **sengaja tidak diganti** (`index-Dg7h0oU_.js`): ±31 chunk lain mengimpor nama itu, dan menambah
@@ -22,12 +24,13 @@ query string membuat modul ter-instansiasi dua kali. Konsekuensinya: CDN/browser
 
 Identitas berkas (SHA-256):
 
-| Berkas                                 | SHA-256                                                            |
-| -------------------------------------- | ------------------------------------------------------------------ |
-| bundel asli `assets/index-Dg7h0oU_.js` | `f442b350d4a2b15fb8616259ecf6d764ffd0f3609b0391aba1b0ad710b1ff617` |
-| bundel hasil patch                     | `c45f97d335e98f9fd7bdd138e7ae7e81feee79179440c3ee1552944e4e07ffc6` |
+| Berkas                                             | SHA-256                                                            |
+| -------------------------------------------------- | ------------------------------------------------------------------ |
+| bundel asli `assets/index-Dg7h0oU_.js`             | `f442b350d4a2b15fb8616259ecf6d764ffd0f3609b0391aba1b0ad710b1ff617` |
+| bundel hasil patch (Revisi 2, 33 patch)            | `f602060f892b0487b9e5766fd2d3013ec59548a50dc6572d7e0face4ed83fbb2` |
+| bundel hasil patch Revisi 1 (23 patch, digantikan) | `c45f97d335e98f9fd7bdd138e7ae7e81feee79179440c3ee1552944e4e07ffc6` |
 
-## Daftar patch (23)
+## Daftar patch (33)
 
 | ID                                 | Akar masalah yang diperbaiki                                                                                                                                                                                                                                                                                       |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -48,5 +51,13 @@ Identitas berkas (SHA-256):
 | `P9a-manifest-fetch-timeout`       | Unduhan manifest bertanda tangan (signed URL) 15 dtk timeout.                                                                                                                                                                                                                                                      |
 | `P9b-track-info-deadline`          | `/info/` deadline 8 dtk.                                                                                                                                                                                                                                                                                           |
 | `P10a/b/c-player-*`                | Kegagalan pemutaran tidak lagi senyap: tombol Play dikembalikan dari ikon Pause, toast alasan gagal, `NotAllowedError` (autoplay) → "Press Play", error elemen `<audio>` ditampilkan.                                                                                                                              |
+| `P0-prelude` (diperluas)           | Menyisipkan `prelude-youtube.js` (objek `__hzYt`). Sakelar: `localStorage["hz-source"]="tidal"` mengembalikan jalur TIDAL lama; `localStorage["hz-yt-visible"]="1"` menampilkan pemutar YouTube untuk debug.                                                                                                       |
+| `P11a-music-api-search-youtube`    | `MusicAPI.search()` memanggil `/api/search` (YouTube Music) bila sumber YouTube aktif. Jalur TIDAL tetap ada di belakang sakelar.                                                                                                                                                                                  |
+| `P11b1/P11b2-searchpage-*`         | Halaman cari tidak lagi mencoba memperkaya artis/album dari API TIDAL untuk hasil YouTube (akan gagal).                                                                                                                                                                                                            |
+| `P11b3/b4/b5-searchpage-empty-*`   | Tab Artists/Albums/Playlists untuk hasil YouTube memberi pesan "Only tracks are available in this version." alih-alih "No … found."                                                                                                                                                                                |
+| `P11c-search-click-queue`          | Klik hasil mengantre semua hasil dari lagu yang diklik, supaya Next/Prev dan lanjut-otomatis bekerja (sebelumnya hanya 1 lagu).                                                                                                                                                                                    |
+| `P12a-player-youtube-branch`       | Cabang pertama `playTrackFromQueue`: lagu biasa diputar lewat YouTube (lagu pustaka ber-id TIDAL di-_resolve_ dulu lewat `/api/resolve`); podcast/tracker/file lokal/video tetap jalur lama.                                                                                                                       |
+| `P12b-preload-skip-youtube`        | Preload lagu berikutnya meminta stream ke API TIDAL yang mati; dilewati untuk sumber YouTube.                                                                                                                                                                                                                      |
+| `P12c-handlePlayPause-youtube`     | `handlePlayPause` menentukan "lanjutkan" vs "mulai ulang" dari `<audio>.src` yang kosong saat YouTube memutar → tombol Pause akan memulai ulang lagu. Video YouTube yang sudah dimuat dihitung sebagai sumber.                                                                                                     |
 
 Perubahan **tidak** menyentuh: autentikasi, pengecekan domain/origin, kredensial, tema, logo, layout, dan wrapper `desktop/` / `mobile/`.

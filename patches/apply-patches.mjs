@@ -22,7 +22,10 @@ if (!inFile || !outFile) {
     process.exit(2);
 }
 
-const prelude = fs.readFileSync(path.join(here, 'prelude.js'), 'utf8');
+const prelude =
+    fs.readFileSync(path.join(here, 'prelude.js'), 'utf8') +
+    '\n' +
+    fs.readFileSync(path.join(here, 'prelude-youtube.js'), 'utf8');
 let src = fs.readFileSync(inFile, 'utf8');
 
 /** @type {{id:string, why:string, find:string, replace:string, count?:number}[]} */
@@ -223,6 +226,80 @@ const edits = [
         find: '!e.currentTrack||!a||1===a.code||e.isFallbackInProgress}),t.addEventListener("volumechange"',
         replace:
             '!e.currentTrack||!a||1===a.code||e.isFallbackInProgress||__hzNotify(__hzMsg.playFailed+": "+s,"playback",8e3)}),t.addEventListener("volumechange"',
+    },
+    // ------------------------------------------------------------------ YouTube source (search + playback)
+    // The TIDAL/hifi-API instances are gone (domains removed, upstream TIDAL auth revoked), so search and playback
+    // go through /api/search + /api/resolve (api/) and the YouTube IFrame player (patches/prelude-youtube.js).
+    // `localStorage["hz-source"]="tidal"` restores the legacy path.
+    {
+        id: 'P11a-music-api-search-youtube',
+        why: 'MusicAPI.search is the single entry point of the search page: route it to /api/search (YouTube Music).',
+        find: 'async search(e,t={}){const i=this.getAPI();if("function"==typeof i.search)return i.search(e,t);',
+        replace:
+            'async search(e,t={}){if(__hzYt.enabled)return __hzYt.search(e,t);const i=this.getAPI();if("function"==typeof i.search)return i.search(e,t);',
+    },
+    {
+        id: 'P11b1-searchpage-no-artist-enrichment',
+        why: 'Artist cards are derived from track artists and enriched through the (dead) TIDAL API; YouTube results have no artist pages, so skip it.',
+        find: 'if(0===d.length&&l.length>0){const e=new Map;l.forEach(t=>{t.artist&&',
+        replace: 'if(!o.hzYt&&0===d.length&&l.length>0){const e=new Map;l.forEach(t=>{t.artist&&',
+    },
+    {
+        id: 'P11b2-searchpage-no-album-cards',
+        why: 'Album cards derived from track albums would link to album pages that need the dead TIDAL API.',
+        find: 'if(0===u.length&&l.length>0){const e=new Map;l.forEach(t=>{t.album&&',
+        replace: 'if(!o.hzYt&&0===u.length&&l.length>0){const e=new Map;l.forEach(t=>{t.album&&',
+    },
+    {
+        id: 'P11b3-searchpage-empty-sections',
+        why: 'Say honestly that only tracks are available instead of "No artists/albums/playlists found".',
+        find: 'i.innerHTML=d.length?d.map(e=>this.createArtistCardHTML(e)).join(""):Xt("No artists found.")',
+        replace:
+            'i.innerHTML=d.length?d.map(e=>this.createArtistCardHTML(e)).join(""):Xt(o.hzYt?__hzMsg.onlyTracks:"No artists found.")',
+    },
+    {
+        id: 'P11b4-searchpage-empty-albums',
+        why: 'Same as P11b3 for albums.',
+        find: 'a.innerHTML=u.length?u.map(e=>this.createAlbumCardHTML(e)).join(""):Xt("No albums found.")',
+        replace:
+            'a.innerHTML=u.length?u.map(e=>this.createAlbumCardHTML(e)).join(""):Xt(o.hzYt?__hzMsg.onlyTracks:"No albums found.")',
+    },
+    {
+        id: 'P11b5-searchpage-empty-playlists',
+        why: 'Same as P11b3 for playlists.',
+        find: 's.innerHTML=h.length?h.map(e=>this.createPlaylistCardHTML(e)).join(""):Xt("No playlists found.")',
+        replace:
+            's.innerHTML=h.length?h.map(e=>this.createPlaylistCardHTML(e)).join(""):Xt(o.hzYt?__hzMsg.onlyTracks:"No playlists found.")',
+    },
+    {
+        id: 'P11c-search-click-queue',
+        why: 'Clicking a search result queued only that track, so Next/auto-advance had nothing to play. Queue all results from the clicked one.',
+        find: 'e.setQueue([a],0),e.enableAutoplay(),',
+        replace: 'e.setQueue(...__hzYt.searchQueue(m,a,Zt)),e.enableAutoplay(),',
+    },
+    {
+        id: 'P12a-player-youtube-branch',
+        why:
+            'New first branch in playTrackFromQueue: tracks that are not podcasts/trackers/local/video play through the YouTube ' +
+            'player (resolving library tracks with TIDAL ids to a YouTube video first). Other tracks release the <audio> shadows.',
+        find: 'try{let i;const a=o.isTracker||o.id&&String(o.id).startsWith("tracker-");if(o.isPodcast||',
+        replace:
+            'try{let i;const a=o.isTracker||o.id&&String(o.id).startsWith("tracker-");__hzYt.wants(o)||__hzYt.release();if(__hzYt.wants(o)){await __hzYt.playTrack(this,o,f,e,n)}else if(o.isPodcast||',
+    },
+    {
+        id: 'P12b-preload-skip-youtube',
+        why: 'Background preloading asks the (dead) TIDAL API for the next stream; there is nothing to preload for YouTube.',
+        find: 'async _executePreloadNextTracks(){this.preloadAbortController&&',
+        replace: 'async _executePreloadNextTracks(){if(__hzYt.enabled)return;this.preloadAbortController&&',
+    },
+    {
+        id: 'P12c-handlePlayPause-youtube',
+        why:
+            'handlePlayPause decides "resume" vs "restart" from <audio>.src, which is empty while a YouTube video plays, so Pause ' +
+            'would restart the track. A loaded YouTube video counts as a loaded source.',
+        find: '(e.src||e.currentSrc||e.srcObject||this.shakaInitialized)&&!e.error?e.paused?this.safePlay(e)',
+        replace:
+            '(__hzYt.ready(e)||e.src||e.currentSrc||e.srcObject||this.shakaInitialized)&&!e.error?e.paused?this.safePlay(e)',
     },
 ];
 
