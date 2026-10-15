@@ -1,4 +1,4 @@
-const CACHE_NAME = hidzmusify-v14;
+const CACHE_NAME = hidzmusify-v15;
 self.addEventListener(install, () => self.skipWaiting());
 self.addEventListener(activate, (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)))).then(() => self.clients.claim()));

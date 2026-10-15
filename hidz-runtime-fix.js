@@ -895,3 +895,34 @@
   },200);
 })();
 
+/* === HIDZ V15: SEAMLESS NATIVE AUDIO & CONTEXTUAL BACK === */
+(function(){
+  if(window.__HIDZ_V15__)return; window.__HIDZ_V15__=true;
+
+  // Pastikan tidak ada tombol kembali model melayang (fixed)
+  var clearFloatingBack=function(){
+    ["hidz-back-v10","hidz-back-v9","hidz-back-v8","hidz-back-v7","hidz-native-back-btn","hidz-back-pill","hidz-back-btn-v8"].forEach(function(id){
+      var el=document.getElementById(id); if(el)el.remove();
+    });
+  };
+  clearFloatingBack();
+
+  // Sinkronisasi informasi lagu ke parent (hidzproject.my.id) agar parent juga bisa menjaga background audio
+  var lastSentSig="";
+  setInterval(function(){
+    clearFloatingBack();
+    var am=document.querySelector("am-lyrics");
+    var a=document.querySelector("audio:not(#hidz-ka-v13):not(#hidz-silent-ka)");
+    var playing=!!((a&&!a.paused&&a.currentTime>0)||(window.__hidzYtBridge&&window.__hidzYtBridge.isPlaying&&window.__hidzYtBridge.isPlaying()));
+    if(am&&window.parent&&window.parent!==window){
+      var t=am.getAttribute("song-title")||am.songTitle||"";
+      var ar=(am.getAttribute("song-artist")||am.songArtist||"").replace(/\s*-\s*Topic$/i,"").trim();
+      var sig=t+"|"+ar+"|"+playing;
+      if(t&&sig!==lastSentSig){
+        lastSentSig=sig;
+        try{window.parent.postMessage({type:"HIDZ_SYNC_TRACK",title:t,artist:ar,playing:playing,src:a?a.currentSrc||a.src:""},"*");}catch(_){}
+      }
+    }
+  },250);
+})();
+
